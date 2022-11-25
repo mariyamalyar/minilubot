@@ -1,58 +1,17 @@
+main.py
+
 import telebot
 
-exchanges = {
-    'доллар': 'USD',
-    'евро': 'EUR',
-    'рубль': 'RUB'
-}
-TOKEN = "5732499062:AAG7MyFqKYt9efBWsCxNTqbJh4SVh-N8QKg"
+from config import *
+from extensions import Converter, APIException
 
 bot = telebot.TeleBot(TOKEN)
 
 @bot.message_handler(commands=['start', 'help'])
 def start(message: telebot.types.Message):
-    text = "Приветствие!"
-    bot.send_message(message.chat.id, text)
-
-@bot.message_handler(commands=['values'])
-def values(message: telebot.types.Message):
-    text = 'Доступные валюты:'
-    for i in exchanges.keys():
-        text = '\n'.join((text, i))
+    text = "Чтобы начать работу введите команду боту в следующем формате: <имя валюты,цену которой хочет узнать>\
+    <имя валюты, в которой надо узнать цену первой валюты> <количество первой валюты>\nУвидеть список всех доступных валют: /values"
     bot.reply_to(message, text)
-
-bot.polling()
-
-import requests
-import json
-
-base_key = "USD"
-sym_key = "RUB"
-amount = 100
-
-r = requests.get(f"https://api.exchangeratesapi.io/latest?base={base_key}&symbols={sym_key}")
-resp = json.loads(r.content)
-new_price = resp['rates'][sym_key] * amount
-
-print(new_price)
-
-import telebot
-import requests
-import json
-
-exchanges = {
-    'доллар': 'USD',
-    'евро': 'EUR',
-    'рубль': 'RUB'
-}
-TOKEN = "5732499062:AAG7MyFqKYt9efBWsCxNTqbJh4SVh-N8QKg"
-
-bot = telebot.TeleBot(TOKEN)
-
-@bot.message_handler(commands=['start', 'help'])
-def start(message: telebot.types.Message):
-    text = "Приветствие!"
-    bot.send_message(message.chat.id, text)
 
 @bot.message_handler(commands=['values'])
 def values(message: telebot.types.Message):
@@ -63,90 +22,62 @@ def values(message: telebot.types.Message):
 
 @bot.message_handler(content_types=['text'])
 def converter(message: telebot.types.Message):
-    base, sym, amount = message.text.split(' ')
-    r = requests.get(f"https://api.exchangeratesapi.io/latest?base={base}&symbols={sym}")
-    resp = json.loads(r.content)
-    new_price = resp['rates'][sym] * float(amount)
-    bot.reply_to(message, f"Цена {amount} {base} в {sym} : {new_price}")
+    try:
+        get_price = Converter.get_price(base, quote, amount)
+    except ValueError as e:
+        bot.reply_to(message, 'Неверное количество параметров!')
+
+    try:
+        get_price = Converter.get_price(base, quote, amount)
+        bot.reply_to(message, f"Цена {amount} {base} в {quote} : {get_price}")
+    except APIException as e:
+        bot.reply_to(message, f"Ошибка в команде:\n{e}")
 
 bot.polling()
 
-import json
+
+config.py 
+
+exchanges = {
+    'доллар': 'USD',
+    'евро': 'EUR',
+    'рубль': 'RUB'
+}
+
+TOKEN = "5732499062:AAG7MyFqKYt9efBWsCxNTqbJh4SVh-N8QKg"
+
+
+extensions.py
+
 import requests
+import json
 from config import exchanges
 
 class APIException(Exception):
     pass
 
-
-class Convertor:
+class Converter:
     @staticmethod
-    def get_price(base, sym, amount):
+    def get_price(base, quote, amount):
         try:
             base_key = exchanges[base.lower()]
         except KeyError:
-            raise APIException(f"Валюта {base} не найдена!")
+            return APIException(f"Валюта {base} не найдена!")
 
         try:
-            sym_key = exchanges[sym.lower()]
+            quote_key = exchanges[quote.lower()]
         except KeyError:
-            raise APIException(f"Валюта {sym} не найдена!")
+            raise APIException(f"Валюта {quote} не найдена!")
 
-        if base_key == sym_key:
+        if base_key == quote_key:
             raise APIException(f'Невозможно перевести одинаковые валюты {base}!')
-        
+
         try:
-            amount = float(amount)
+            amount = float(amount.replace(",", "."))
         except ValueError:
             raise APIException(f'Не удалось обработать количество {amount}!')
-        
-        r = requests.get(f"https://api.exchangeratesapi.io/latest?base={base_key}&symbols={sym_key}")
+
+        r = requests.get(f"https://api.exchangeratesapi.io/latest?base={base_key}&symbols={quote_key}")
         resp = json.loads(r.content)
-        new_price = resp['rates'][sym_key] * amount
-        new_price = round(new_price, 3)
-        message =  f"Цена {amount} {base} в {sym} : {new_price}"
-        return 
-        
-        import telebot
-from extensions import APIException, Convertor
-from config import TOKEN, exchanges
-import traceback
-
-exchanges = {
-    'доллар': 'USD',
-    'евро': 'EUR',
-    'рубль': 'RUB'
-}
-TOKEN = "5732499062:AAG7MyFqKYt9efBWsCxNTqbJh4SVh-N8QKg"
-
-bot = telebot.TeleBot(TOKEN)
-
-@bot.message_handler(commands=['start', 'help'])
-def start(message: telebot.types.Message):
-    text = "Приветствие!"
-    bot.send_message(message.chat.id, text)
-
-@bot.message_handler(commands=['values'])
-def values(message: telebot.types.Message):
-    text = 'Доступные валюты:'
-    for i in exchanges.keys():
-        text = '\n'.join((text, i))
-    bot.reply_to(message, text)
-
-@bot.message_handler(content_types=['text'])
-def converter(message: telebot.types.Message):
-    values = message.text.split(' ')
-    try:
-        if len(values) != 3:
-            raise APIException('Неверное количество параметров!')
-        
-        answer = Convertor.get_price(*values)
-    except APIException as e:
-        bot.reply_to(message, f"Ошибка в команде:\n{e}" )
-    except Exception as e:
-        traceback.print_tb(e.__traceback__)
-        bot.reply_to(message, f"Неизвестная ошибка:\n{e}" )
-    else:
-        bot.reply_to(message,answer)
-
-bot.polling()        
+        get_price = resp['rates'][quote_key] * float(amount)
+        return round(get_price, 2)
